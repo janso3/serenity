@@ -4,7 +4,8 @@ set(SOURCES
     WavLoader.cpp
     FlacLoader.cpp
     WavWriter.cpp
-    MP3Loader.cpp
+    ModLoader.cpp
+    MP3Loader.cpp    
     UserSampleQueue.cpp
 )
 

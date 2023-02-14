@@ -7,6 +7,7 @@
 #include <LibAudio/FlacLoader.h>
 #include <LibAudio/Loader.h>
 #include <LibAudio/MP3Loader.h>
+#include <LibAudio/ModLoader.h>
 #include <LibAudio/WavLoader.h>
 
 namespace Audio {
@@ -36,6 +37,12 @@ Result<NonnullOwnPtr<LoaderPlugin>, LoaderError> Loader::create_plugin(StringVie
     }
 
     {
+        auto plugin = ModLoaderPlugin::create(path);
+        if (!plugin.is_error())
+            return NonnullOwnPtr<LoaderPlugin>(plugin.release_value());
+    }
+
+    {
         auto plugin = MP3LoaderPlugin::create(path);
         if (!plugin.is_error())
             return NonnullOwnPtr<LoaderPlugin>(plugin.release_value());
@@ -54,6 +61,12 @@ Result<NonnullOwnPtr<LoaderPlugin>, LoaderError> Loader::create_plugin(Bytes buf
 
     {
         auto plugin = FlacLoaderPlugin::create(buffer);
+        if (!plugin.is_error())
+            return NonnullOwnPtr<LoaderPlugin>(plugin.release_value());
+    }
+
+    {
+        auto plugin = ModLoaderPlugin::create(buffer);
         if (!plugin.is_error())
             return NonnullOwnPtr<LoaderPlugin>(plugin.release_value());
     }
