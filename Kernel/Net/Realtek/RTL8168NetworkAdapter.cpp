@@ -225,6 +225,7 @@ bool RTL8168NetworkAdapter::determine_supported_version() const
     case ChipVersion::Version17:
         return true;
     case ChipVersion::Version18:
+        return true;
     case ChipVersion::Version19:
     case ChipVersion::Version20:
     case ChipVersion::Version21:
@@ -450,8 +451,10 @@ void RTL8168NetworkAdapter::configure_phy()
         configure_phy_e_2();
         return;
     }
-    case ChipVersion::Version18:
-        TODO();
+    case ChipVersion::Version18: {
+        configure_phy_f_1();
+        return;
+    }
     case ChipVersion::Version19:
         TODO();
     case ChipVersion::Version20:
@@ -594,6 +597,106 @@ void RTL8168NetworkAdapter::configure_phy_e_2()
 
     // Broken BIOS workaround: feed GigaMAC registers with MAC address.
     rar_exgmac_set();
+}
+
+void RTL8168NetworkAdapter::configure_phy_f()
+{
+    // For 4-corner performance improve
+    phy_out(0x1f, 0x5);
+    phy_out(0x5, 0x8b80);
+    phy_update(0x6, 0x6, 0);
+    phy_out(0x1f, 0);
+
+    // PHY auto speed down
+    phy_out(0x1f, 0x4);
+    phy_out(0x1f, 0x7);
+    phy_out(0x1e, 0x2d);
+    phy_update(0x18, 0x10, 0);
+    phy_out(0x1f, 0x2);
+    phy_out(0x1f, 0);
+    phy_update(0x14, 0x8000, 0);
+
+    // Improve 10M EEE waveform
+    phy_out(0x1f, 0x5);
+    phy_out(0x5, 0x8b86);
+    phy_update(0x6, 0x1, 0);
+    phy_out(0x1f, 0);
+
+    // EEE Setting
+    eri_update(0x1b0, ERI_MASK_1111, 0, 0x3, ERI_EXGMAC);
+    phy_out(0x1f, 0x5);
+    phy_out(0x5, 0x8b85);
+    phy_update(0x6, 0, 0x2000);
+    phy_out(0x1f, 0x4);
+    phy_out(0x1f, 0x7);
+    phy_out(0x1e, 0x20);
+    phy_update(0x15, 0, 0x100);
+    phy_out(0x1f, 0x2);
+    phy_out(0x1f, 0);
+    phy_out(0xd, 0x7);
+    phy_out(0xe, 0x3c);
+    phy_out(0xd, 0x4007);
+    phy_out(0xe, 0);
+    phy_out(0xd, 0);
+}
+
+void RTL8168NetworkAdapter::configure_phy_f_1()
+{
+    constexpr PhyRegister phy_registers[] = {
+        // Channel estimation fine tune
+        { 0x1f, 0x3 },
+        { 0x9, 0xa20f },
+        { 0x1f, 0 },
+        { 0x1f, 0 },
+
+        // Modify green table for 10M
+        { 0x1f, 0x5 },
+        { 0x5, 0x8b79 },
+        { 0x6, 0xaa00 },
+        { 0x1f, 0 },
+
+        // Disable hiimpedance detection (RTCT)
+        { 0x1f, 0x3 },
+        { 0x1, 0x328a },
+        { 0x1f, 0 },
+        { 0x1f, 0 },
+    };
+
+    phy_out_batch(phy_registers, 12);
+
+    // Modify green table for giga & fnet
+    phy_out(0x1f, 0x5);
+    phy_out(0x5, 0x8b55);
+    phy_out(0x6, 0);
+    phy_out(0x5, 0x8b5e);
+    phy_out(0x6, 0);
+    phy_out(0x5, 0x8b67);
+    phy_out(0x6, 0);
+    phy_out(0x5, 0x8b70);
+    phy_out(0x6, 0);
+    phy_out(0x1f, 0);
+
+    phy_out(0x1f, 0x4);
+    phy_out(0x1f, 0x7);
+    phy_out(0x1e, 0x78);
+    phy_update(0x17, 0, 0);
+    phy_out(0x1f, 0x2);
+    phy_out(0x1f, 0);
+
+    phy_out(0x1f, 0x4);
+    phy_out(0x1f, 0x7);
+    phy_out(0x1e, 0x78);
+    phy_update(0x19, 0xfb, 0);
+    phy_out(0x1f, 0x2);
+    phy_out(0x1f, 0);
+
+    configure_phy_f();
+
+    // Improve 2-pair detection performance
+    phy_out(0x1f, 0x5);
+    phy_out(0x5, 0x8b85);
+    phy_update(0x6, 0x4000, 0);
+    phy_out(0x1f, 0);
 }
 
 void RTL8168NetworkAdapter::configure_phy_h_1()
@@ -882,7 +985,8 @@ void RTL8168NetworkAdapter::hardware_quirks()
         hardware_quirks_e_2();
         return;
     case ChipVersion::Version18:
-        TODO();
+        hardware_quirks_f_1();
+        return;
     case ChipVersion::Version19:
         TODO();
     case ChipVersion::Version20:
@@ -969,6 +1073,75 @@ void RTL8168NetworkAdapter::hardware_quirks_e_2()
     out8(REG_DLLPR, in8(REG_DLLPR) | DLLPR_PFM_ENABLE);
     out32(REG_MISC, in32(REG_MISC) | MISC_PWM_ENABLE);
     out8(REG_CONFIG5, in8(REG_CONFIG5) & ~CFG5_SPI_ENABLE);
+
+    // Set early TX
+    out8(REG_MTPS, 0x27);
+
+    // FIXME: Disable PCIe clock request
+
+    // enable tx auto fifo
+    out32(REG_TXCFG, in32(REG_TXCFG) | TXCFG_AUTO_FIFO);
+
+    out8(REG_MCU, in8(REG_MCU) & ~MCU_NOW_IS_OOB);
+
+    // Set EEE LED frequency
+    out8(REG_EEE_LED, in8(REG_EEE_LED) & ~0x7);
+
+    out8(REG_DLLPR, in8(REG_DLLPR) | DLLPR_PFM_ENABLE);
+    out32(REG_MISC, in32(REG_MISC) | MISC_PWM_ENABLE);
+    out8(REG_CONFIG5, in8(REG_CONFIG5) & ~CFG5_SPI_ENABLE);
+}
+
+void RTL8168NetworkAdapter::hardware_quirks_f()
+{
+    // rtl_set_def_aspm_entry_latency
+    csi_enable(CSI_ACCESS_2);
+
+    eri_out(0xc0, ERI_MASK_0011, 0, ERI_EXGMAC);
+    eri_out(0xb8, ERI_MASK_1111, 0, ERI_EXGMAC);
+
+    // rtl_set_fifo_size
+    eri_out(0xc8, ERI_MASK_1111, 0x100002, ERI_EXGMAC);
+    eri_out(0xe8, ERI_MASK_1111, 0x100006, ERI_EXGMAC);
+
+    // rtl_reset_packet_filter
+    eri_update(0xdc, ERI_MASK_1111, 0, 1, ERI_EXGMAC);
+    eri_update(0xdc, ERI_MASK_1111, 0, 0, ERI_EXGMAC);
+
+    // rtl_enable_exit_l1
+    eri_update(0xd4, ERI_MASK_0011, 0x1f00, 0xff00, ERI_EXGMAC);
+
+    eri_update(0x1b0, ERI_MASK_1111, 0x10, 0, ERI_EXGMAC);
+    eri_update(0x1d0, ERI_MASK_1111, 0x11, 0, ERI_EXGMAC);
+
+    eri_out(0xcc, ERI_MASK_1111, 0x50, ERI_EXGMAC);
+    eri_out(0xd0, ERI_MASK_1111, 0x60, ERI_EXGMAC);
+
+    // FIXME: Disable PCIe clock request
+
+    out8(REG_MCU, in8(REG_MCU) & ~MCU_NOW_IS_OOB);
+    out8(REG_DLLPR, in8(REG_DLLPR) | DLLPR_PFM_ENABLE);
+    out32(REG_MISC, in32(REG_MISC) | MISC_PWM_ENABLE);
+    out8(REG_CONFIG5, in8(REG_CONFIG5) & ~CFG5_SPI_ENABLE);
+
+    // config_eee_mac
+    out8(REG_EEE_LED, in8(REG_EEE_LED) & ~0x07);
+    eri_update(0x1b0, ERI_MASK_1111, 0, 0x3, ERI_EXGMAC);
+}
+
+void RTL8168NetworkAdapter::hardware_quirks_f_1()
+{
+    constexpr EPhyUpdate ephy_info[] = {
+        { 0x6, 0xc0, 0x20 },
+        { 0x8, 0x1, 0x2 },
+        { 0x9, 0, 0x80 },
+        { 0x19, 0, 0x224 },
+        { 0, 0, 0x8 },
+        { 0xc, 0x3df0, 0x200 },
+    };
+
+    hardware_quirks_f();
+    extended_phy_initialize(ephy_info, 6);
 }
 
 void RTL8168NetworkAdapter::hardware_quirks_h()
